@@ -1,0 +1,3 @@
+# Este arquivo mantém o diretório .pytest_cache no git
+# O pytest cria este diretório para cache de testes
+
