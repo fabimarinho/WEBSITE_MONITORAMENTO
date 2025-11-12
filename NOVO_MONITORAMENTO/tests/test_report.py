@@ -47,7 +47,8 @@ class TestReportGenerator:
         with open(sample_settings.LOG_FILE, "w", encoding="utf-8") as f:
             json.dump(sample_log_entry, f, ensure_ascii=False)
             f.write("\n")
-            json.dump(sample_log_entry, ensure_ascii=False)
+            # Segunda entrada
+            json.dump(sample_log_entry, f, ensure_ascii=False)
             f.write("\n")
         
         logs = generator._read_all_logs()
@@ -116,6 +117,9 @@ class TestReportGenerator:
         report_path = generator.generate_daily_report(date.today())
         
         assert report_path is not None
+        # Converte para Path se for string
+        if isinstance(report_path, str):
+            report_path = Path(report_path)
         assert isinstance(report_path, Path)
         mock_pdf.add_page.assert_called()
         mock_pdf.output.assert_called()

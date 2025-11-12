@@ -6,6 +6,7 @@ Testa o carregamento, validação e inicialização de configurações.
 import os
 import tempfile
 from pathlib import Path
+from unittest.mock import patch
 import pytest
 
 from config import (
@@ -133,16 +134,45 @@ class TestLoadSettings:
         assert settings.SITE_URL == "https://env.example.com"
         assert settings.PORTAL_URL == "https://env.portal.example.com"
     
-    def test_load_settings_required_vars(self, temp_dir: Path):
+    @patch('config.load_dotenv')
+    def test_load_settings_required_vars(self, mock_load_dotenv, temp_dir: Path):
         """Testa que variáveis obrigatórias são necessárias."""
-        # Remove variáveis obrigatórias
-        if "SITE_URL" in os.environ:
-            del os.environ["SITE_URL"]
-        if "PORTAL_URL" in os.environ:
-            del os.environ["PORTAL_URL"]
+        # Mock load_dotenv para retornar True (sucesso)
+        mock_load_dotenv.return_value = True
         
-        with pytest.raises((ValueError, KeyError)):
-            load_settings()
+        # Salva as variáveis originais
+        original_env = os.environ.copy()
+        
+        try:
+            # Limpa TODAS as variáveis de ambiente
+            os.environ.clear()
+            
+            # Testa sem SITE_URL e PORTAL_URL
+            with pytest.raises(ValueError, match=r"SITE_URL é obrigatório"):
+                load_settings()
+            
+            # Testa sem PORTAL_URL
+            os.environ['SITE_URL'] = "https://example.com"
+            with pytest.raises(ValueError, match=r"PORTAL_URL é obrigatório"):
+                load_settings()
+            
+            # Testa sem SITE_URL
+            os.environ.clear()
+            os.environ['PORTAL_URL'] = "https://portal.example.com"
+            with pytest.raises(ValueError, match=r"SITE_URL é obrigatório"):
+                load_settings()
+            
+            # Testa que funciona com ambas as variáveis
+            os.environ['SITE_URL'] = "https://example.com"
+            os.environ['PORTAL_URL'] = "https://portal.example.com"
+            settings = load_settings()
+            assert settings.SITE_URL == "https://example.com"
+            assert settings.PORTAL_URL == "https://portal.example.com"
+        
+        finally:
+            # Restaura as variáveis originais
+            os.environ.clear()
+            os.environ.update(original_env)
     
     def test_load_settings_defaults(self, sample_env_file: Path):
         """Testa que valores padrão são usados quando não especificados."""

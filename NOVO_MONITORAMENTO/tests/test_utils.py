@@ -105,15 +105,14 @@ class TestAppendLog:
         # Verifica que o original não foi modificado
         assert original_entry == original_copy
     
-    def test_append_log_handles_io_error(self, temp_dir: Path, sample_settings: Settings, sample_log_entry: dict):
+    @patch('pathlib.Path.mkdir')
+    def test_append_log_handles_io_error(self, mock_mkdir: Mock, temp_dir: Path, sample_settings: Settings, sample_log_entry: dict):
         """Testa tratamento de erro de I/O."""
-        # Cria um caminho inválido (diretório como arquivo)
-        invalid_path = temp_dir / "invalid" / "nested" / "log.jsonl"
-        sample_settings.LOG_FILE = invalid_path
+        # Força erro de I/O ao criar diretório
+        mock_mkdir.side_effect = OSError("Failed to create directory")
         
-        # Deve criar diretórios automaticamente
-        append_log(sample_settings, sample_log_entry)
-        assert invalid_path.exists()
+        with pytest.raises(OSError):
+            append_log(sample_settings, sample_log_entry)
 
 
 class TestSendSlack:
@@ -182,11 +181,21 @@ class TestSendSlack:
         mock_response.raise_for_status.side_effect = requests.exceptions.HTTPError("Bad Request")
         mock_post.return_value = mock_response
         
-        result = send_slack(sample_settings, "Test message", retries=2)
+        # Configura o mock para retornar o mesmo mock_response em todas as chamadas
+        mock_post.side_effect = None  # Remove qualquer side_effect anterior
+        
+        result = send_slack(sample_settings, "Test message")
         
         assert result is False
         # Não deve fazer retry em erros 4xx
         assert mock_post.call_count == 1
+        # Verifica se o webhook foi chamado com os parâmetros corretos
+        mock_post.assert_called_once_with(
+            sample_settings.SLACK_WEBHOOK,
+            json={"text": "Test message"},
+            timeout=10,
+            headers={"Content-Type": "application/json"}
+        )
     
     @patch('utils.requests.post')
     def test_send_slack_retries(self, mock_post: Mock, sample_settings: Settings):
@@ -201,6 +210,22 @@ class TestSendSlack:
         
         assert result is True
         assert mock_post.call_count == 3
+
+    @patch('utils.requests.post')
+    def test_send_slack_example_webhook(self, mock_post: Mock, temp_dir: Path):
+        """Testa que webhook com valor de exemplo é detectado e não tenta enviar."""
+        settings = Settings(
+            SITE_URL="https://example.com",
+            PORTAL_URL="https://portal.example.com",
+            SLACK_WEBHOOK="https://hooks.slack.com/services/your/webhook/url",
+            BASE_DIR=temp_dir / "relatorio"
+        )
+
+        result = send_slack(settings, "Test message")
+
+        assert result is False
+        # Não deve ter tentado enviar via requests
+        mock_post.assert_not_called()
 
 
 class TestFormatSlackMessage:

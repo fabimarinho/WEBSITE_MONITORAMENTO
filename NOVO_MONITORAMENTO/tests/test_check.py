@@ -27,20 +27,21 @@ class TestSiteChecker:
     
     def test_site_checker_invalid_settings(self, temp_dir: Path):
         """Testa validação de configurações inválidas."""
-        invalid_settings = Settings(
-            SITE_URL="",  # URL vazia
-            PORTAL_URL="https://portal.example.com",
-            BASE_DIR=temp_dir / "relatorio"
-        )
-        
-        with pytest.raises(ValueError):
-            SiteChecker(invalid_settings)
+        with pytest.raises(ValueError, match="SITE_URL é obrigatório e não pode estar vazio"):
+            Settings(
+                SITE_URL="",  # URL vazia
+                PORTAL_URL="https://portal.example.com",
+                SUCCESS_ORG_LABEL="Test Organization",
+                BASE_DIR=temp_dir / "relatorio"
+            )
     
     @patch('check.SSLChecker.check_ssl_certificate')
     @patch('check.requests.get')
     @patch('check.sync_playwright')
+    @patch('check.time.time')
     def test_perform_check_success(
         self,
+        mock_time,
         mock_playwright,
         mock_requests_get,
         mock_ssl_check,
@@ -142,12 +143,9 @@ class TestSiteChecker:
         assert result["ok_http"] is False
         assert result["http_detail"]["error"] == "Connection error"
     
-    @patch('check.time.time')
     @patch('check.sync_playwright')
-    def test_do_playwright_check_success(self, mock_playwright, mock_time, sample_settings: Settings):
+    def test_do_playwright_check_success(self, mock_playwright, sample_settings: Settings):
         """Testa verificação Playwright bem-sucedida."""
-        # Mock time para controlar tempos
-        mock_time.side_effect = [0.0, 1.5, 2.0]  # nav_start, nav_end, interaction_end
         
         mock_page = Mock()
         mock_page.goto.return_value = None

@@ -262,6 +262,10 @@ class SSLChecker:
                 "%Y%m%d%H%M%SZ",             # ASN.1 format: 20240115103000Z
                 "%Y-%m-%d %H:%M:%S",         # ISO format
                 "%Y-%m-%dT%H:%M:%SZ",        # ISO format with T
+                "%b %d %H:%M:%S %Y",         # Jan 15 10:30:00 2024 (sem timezone)
+                "%Y-%m-%d",                  # Data simples
+                "%d/%m/%Y %H:%M:%S",        # Formato brasileiro
+                "%d/%m/%Y",                 # Data simples brasileira
             ]
             
             for fmt in formats:

@@ -218,11 +218,13 @@ class SiteChecker:
             # Mede TTFB (tempo até primeiro byte)
             ttfb_start = time.time()
             # Lê primeiro chunk para garantir que recebeu o primeiro byte
-            first_chunk = next(response.iter_content(chunk_size=1), None)
+            content = b''
+            for chunk in response.iter_content(chunk_size=1):
+                content = chunk
+                break
             ttfb = time.time() - ttfb_start
             
             # Lê o resto da resposta
-            content = first_chunk if first_chunk else b''
             for chunk in response.iter_content(chunk_size=8192):
                 content += chunk
             

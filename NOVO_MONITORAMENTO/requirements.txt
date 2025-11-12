@@ -4,6 +4,7 @@ apscheduler>=3.9.1
 python-dotenv>=1.0.0
 requests>=2.31.0
 playwright>=1.40.0
+python-dateutil>=2.8.2
 
 # Dependências para testes
 pytest>=7.4.0

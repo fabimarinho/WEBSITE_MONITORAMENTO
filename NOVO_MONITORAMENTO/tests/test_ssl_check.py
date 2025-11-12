@@ -31,14 +31,20 @@ class TestSSLChecker:
     
     @patch('ssl_check.socket.create_connection')
     @patch('ssl_check.ssl.create_default_context')
-    def test_check_ssl_certificate_success(self, mock_context, mock_connection, temp_dir: Path):
+    def test_check_ssl_certificate_success(self, mock_context, mock_connection):
         """Testa verificação bem-sucedida de certificado SSL."""
-        # Mock do certificado
+        from datetime import datetime, timedelta
+        
+        # Mock do certificado com datas válidas
+        future_date = datetime.now() + timedelta(days=90)
+        not_after = future_date.strftime("%b %d %H:%M:%S %Y GMT")
+        not_before = datetime.now().strftime("%b %d %H:%M:%S %Y GMT")
+        
         mock_cert = {
             'subject': [('CN', 'example.com')],
             'issuer': [('CN', 'Test CA')],
-            'notBefore': 'Jan 01 00:00:00 2024 GMT',
-            'notAfter': 'Jan 01 00:00:00 2025 GMT',
+            'notBefore': not_before,
+            'notAfter': not_after,
             'serialNumber': '123456',
             'version': 3,
             'subjectAltName': []
@@ -118,6 +124,8 @@ class TestSSLChecker:
     
     def test_parse_cert_date_valid(self):
         """Testa parsing de data válida do certificado."""
+        from datetime import datetime
+        
         checker = SSLChecker()
         
         # Formato comum: "Jan 15 10:30:00 2024 GMT"
@@ -125,7 +133,12 @@ class TestSSLChecker:
         result = checker._parse_cert_date(date_str)
         
         assert result is not None
-        assert isinstance(result, type(checker._parse_cert_date.__annotations__['return']))
+        assert isinstance(result, datetime)  # Verifica se é um objeto datetime
+        assert result.year == 2024
+        assert result.month == 1
+        assert result.day == 15
+        assert result.hour == 10
+        assert result.minute == 30
     
     def test_parse_cert_date_invalid(self):
         """Testa parsing de data inválida."""

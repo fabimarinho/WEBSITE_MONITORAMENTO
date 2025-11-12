@@ -26,6 +26,8 @@ logger = logging.getLogger(__name__)
 DEFAULT_TIMESTAMP_FORMAT = "%Y-%m-%d %H:%M:%S %Z"
 DEFAULT_SLACK_TIMEOUT = 10  # Segundos
 DEFAULT_SLACK_RETRIES = 2  # Número de tentativas em caso de falha
+# Valor de exemplo presente no .env/config padrão. Usar constante evita magic strings espalhadas.
+DEFAULT_SLACK_WEBHOOK_EXAMPLE = "your/webhook/url"
 LOG_ENCODING = "utf-8"
 JSON_ENSURE_ASCII = False
 
@@ -154,6 +156,14 @@ def send_slack(
         ```
     """
     # Verifica se o webhook está configurado
+    # Guard: detecta se o webhook ainda está com o valor de exemplo
+    if settings.SLACK_WEBHOOK and DEFAULT_SLACK_WEBHOOK_EXAMPLE in settings.SLACK_WEBHOOK:
+        logger.error(
+            "Webhook do Slack ainda está com o valor de exemplo. "
+            "Atualize o arquivo .env ou config.py com o webhook real."
+        )
+        return False
+
     if not settings.SLACK_WEBHOOK:
         logger.warning(
             "Webhook do Slack não configurado. Mensagem não enviada. "
@@ -205,7 +215,12 @@ def send_slack(
             
         except RequestException as e:
             last_exception = e
-            status_code = getattr(e.response, 'status_code', None) if hasattr(e, 'response') else None
+            # Try to get status_code from the exception or from the local response
+            status_code = None
+            if hasattr(e, 'response') and getattr(e, 'response') is not None:
+                status_code = getattr(e.response, 'status_code', None)
+            elif 'response' in locals() and response is not None:
+                status_code = getattr(response, 'status_code', None)
             
             if status_code:
                 logger.error(
@@ -248,7 +263,9 @@ def format_slack_message(
     title: str,
     content: str,
     fields: Optional[Dict[str, Any]] = None,
-    color: Optional[str] = None
+    color: Optional[str] = None,
+    is_success: bool = False,
+    is_error: bool = False
 ) -> str:
     """
     Formata uma mensagem para o Slack com estrutura organizada.
@@ -258,6 +275,8 @@ def format_slack_message(
         content: Conteúdo principal da mensagem.
         fields: Dicionário opcional com campos adicionais (chave: valor).
         color: Emoji ou indicador de cor (opcional).
+        is_success: Se True, adiciona indicador de sucesso.
+        is_error: Se True, adiciona indicador de erro.
     
     Returns:
         String formatada para envio ao Slack.
@@ -268,15 +287,25 @@ def format_slack_message(
             title="🚨 Alerta",
             content="Site indisponível",
             fields={"URL": "https://example.com", "Status": "500"},
-            color="🔴"
+            is_error=True
         )
         send_slack(settings, message)
         ```
     """
     lines = []
     
-    if color:
-        lines.append(f"{color} {title}")
+    # Adiciona indicadores de status
+    if is_success:
+        prefix = "✅"
+    elif is_error:
+        prefix = "❌"
+    elif color:
+        prefix = color
+    else:
+        prefix = ""
+    
+    if prefix:
+        lines.append(f"{prefix} {title}")
     else:
         lines.append(title)
     
