@@ -300,6 +300,29 @@ def send_slack(
     return False
 
 
+def send_slack(webhook_url, payload, timeout=10):
+    import requests
+    import logging
+    logger = logging.getLogger(__name__)
+
+    headers = {"Content-Type": "application/json"}
+    try:
+        # use json= para serializar corretamente
+        response = requests.post(webhook_url, json=payload, headers=headers, timeout=timeout)
+        try:
+            response.raise_for_status()
+        except requests.exceptions.HTTPError as http_err:
+            # loga o status e o corpo da resposta para entender o erro do Slack
+            logger.error("Slack webhook returned %s: %s", response.status_code, response.text)
+            # opcional: relança com contexto ou retorna False/None conforme sua lógica
+            raise requests.exceptions.HTTPError(f"Slack webhook error {response.status_code}: {response.text}") from http_err
+
+        return response
+    except requests.exceptions.RequestException as err:
+        logger.exception("Erro ao enviar mensagem para Slack: %s", err)
+        raise
+
+
 def format_slack_message(
     title: str,
     content: str,
