@@ -57,9 +57,13 @@
   "tests/test_utils.py::TestSendSlack::test_send_slack_connection_error",
   "tests/test_utils.py::TestSendSlack::test_send_slack_empty_message",
   "tests/test_utils.py::TestSendSlack::test_send_slack_example_webhook",
+  "tests/test_utils.py::TestSendSlack::test_send_slack_example_webhook_allowed_with_flag",
+  "tests/test_utils.py::TestSendSlack::test_send_slack_example_webhook_blocked_by_default",
   "tests/test_utils.py::TestSendSlack::test_send_slack_http_error",
+  "tests/test_utils.py::TestSendSlack::test_send_slack_malformed_service_webhook",
   "tests/test_utils.py::TestSendSlack::test_send_slack_no_webhook",
   "tests/test_utils.py::TestSendSlack::test_send_slack_retries",
   "tests/test_utils.py::TestSendSlack::test_send_slack_success",
-  "tests/test_utils.py::TestSendSlack::test_send_slack_timeout"
+  "tests/test_utils.py::TestSendSlack::test_send_slack_timeout",
+  "tests/test_utils.py::TestSendSlack::test_send_slack_valid_service_webhook"
 ]

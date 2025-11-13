@@ -227,6 +227,76 @@ class TestSendSlack:
         # Não deve ter tentado enviar via requests
         mock_post.assert_not_called()
 
+    @patch('utils.requests.post')
+    def test_send_slack_valid_service_webhook(self, mock_post: Mock, temp_dir: Path):
+        """Testa que webhook do tipo services/AAA/BBB/CCC válido é aceito e tenta enviar."""
+        mock_response = Mock()
+        mock_response.raise_for_status.return_value = None
+        mock_post.return_value = mock_response
+
+        settings = Settings(
+            SITE_URL="https://example.com",
+            PORTAL_URL="https://portal.example.com",
+            SLACK_WEBHOOK="https://hooks.slack.com/services/T00000000/B00000000/XXXXXXXXXXXXXXXX",
+            BASE_DIR=temp_dir / "relatorio"
+        )
+
+        result = send_slack(settings, "Test message")
+
+        assert result is True
+        mock_post.assert_called_once()
+
+    @patch('utils.requests.post')
+    def test_send_slack_malformed_service_webhook(self, mock_post: Mock, temp_dir: Path):
+        """Testa que webhooks 'hooks.slack.com/services/' malformados são rejeitados."""
+        settings = Settings(
+            SITE_URL="https://example.com",
+            PORTAL_URL="https://portal.example.com",
+            SLACK_WEBHOOK="https://hooks.slack.com/services/AAA",  # apenas uma parte (malformado)
+            BASE_DIR=temp_dir / "relatorio"
+        )
+
+        result = send_slack(settings, "Test message")
+
+        assert result is False
+        mock_post.assert_not_called()
+
+    @patch('utils.requests.post')
+    def test_send_slack_example_webhook_blocked_by_default(self, mock_post: Mock, temp_dir: Path):
+        """Testa que webhook de exemplo é bloqueado por padrão."""
+        settings = Settings(
+            SITE_URL="https://example.com",
+            PORTAL_URL="https://portal.example.com",
+            SLACK_WEBHOOK="https://hooks.slack.com/services/your/webhook/url",
+            BASE_DIR=temp_dir / "relatorio"
+        )
+
+        # Sem allow_example_webhook, deve ser bloqueado
+        result = send_slack(settings, "Test message", allow_example_webhook=False)
+
+        assert result is False
+        mock_post.assert_not_called()
+
+    @patch('utils.requests.post')
+    def test_send_slack_example_webhook_allowed_with_flag(self, mock_post: Mock, temp_dir: Path):
+        """Testa que webhook de exemplo é permitido quando allow_example_webhook=True."""
+        mock_response = Mock()
+        mock_response.raise_for_status.return_value = None
+        mock_post.return_value = mock_response
+
+        settings = Settings(
+            SITE_URL="https://example.com",
+            PORTAL_URL="https://portal.example.com",
+            SLACK_WEBHOOK="https://hooks.slack.com/services/your/webhook/url",
+            BASE_DIR=temp_dir / "relatorio"
+        )
+
+        # Com allow_example_webhook=True, deve tentar enviar
+        result = send_slack(settings, "Test message", allow_example_webhook=True)
+
+        assert result is True
+        mock_post.assert_called_once()
+
 
 class TestFormatSlackMessage:
     """Testes para a função format_slack_message."""

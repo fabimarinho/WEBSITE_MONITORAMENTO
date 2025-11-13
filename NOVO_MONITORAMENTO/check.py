@@ -28,6 +28,7 @@ from requests.exceptions import (
 from tenacity import retry, stop_after_attempt, wait_exponential
 
 from config import Settings
+from error_history import ErrorHistory, ErrorType, ErrorSeverity
 from ssl_check import SSLChecker
 from utils import now_str, append_log, send_slack
 
@@ -76,6 +77,7 @@ class SiteChecker:
         self.ssl_checker = SSLChecker(
             expiration_warning_days=getattr(settings, 'SSL_EXPIRATION_WARNING_DAYS', 30)
         )
+        self.error_history = ErrorHistory(settings)
         logger.info(
             f"SiteChecker inicializado para {settings.SITE_URL} "
             f"(portal: {settings.PORTAL_URL})"
@@ -178,9 +180,37 @@ class SiteChecker:
         
         try:
             ssl_result = self.ssl_checker.check_ssl_certificate(self.settings.SITE_URL)
+            
+            # Registra erro no histórico se falhou
+            if not ssl_result.get("ok_ssl"):
+                error_detail = ssl_result.get("ssl_detail", {})
+                error_message = error_detail.get("message", "SSL verification failed")
+                
+                self.error_history.record_error(
+                    error_type=ErrorType.SSL_ERROR,
+                    severity=ErrorSeverity.CRITICAL,
+                    message=f"SSL certificate check failed: {error_message}",
+                    details=error_detail,
+                    ok_ssl=False,
+                    ok_http=True,
+                    ok_playwright=True,
+                )
+            
             return ssl_result
         except Exception as e:
             logger.error(f"Erro inesperado na verificação SSL: {e}", exc_info=True)
+            
+            # Registra erro no histórico
+            self.error_history.record_error(
+                error_type=ErrorType.SSL_ERROR,
+                severity=ErrorSeverity.CRITICAL,
+                message=f"Unexpected error in SSL check: {str(e)}",
+                details={"error": str(e), "type": type(e).__name__},
+                ok_ssl=False,
+                ok_http=True,
+                ok_playwright=True,
+            )
+            
             return {
                 "ok_ssl": False,
                 "ssl_detail": {
@@ -275,11 +305,34 @@ class SiteChecker:
                     f"TTFB {ttfb:.3f}s, "
                     f"tempo total {elapsed_time:.2f}s"
                 )
+                
+                # Registra erro no histórico
+                self.error_history.record_error(
+                    error_type=ErrorType.HTTP_ERROR,
+                    severity=ErrorSeverity.WARNING,
+                    message=f"HTTP check failed with status code {response.status_code}",
+                    details=result.get("http_detail", {}),
+                    ok_ssl=True,
+                    ok_http=False,
+                    ok_playwright=True,
+                )
             
             return result
             
         except Timeout:
             logger.error(f"Timeout na verificação HTTP após {DEFAULT_HTTP_TIMEOUT}s")
+            
+            # Registra erro no histórico
+            self.error_history.record_error(
+                error_type=ErrorType.HTTP_TIMEOUT,
+                severity=ErrorSeverity.CRITICAL,
+                message=f"HTTP request timeout after {DEFAULT_HTTP_TIMEOUT}s",
+                details={"timeout_seconds": DEFAULT_HTTP_TIMEOUT},
+                ok_ssl=True,
+                ok_http=False,
+                ok_playwright=True,
+            )
+            
             return {
                 "ok_http": False,
                 "http_detail": {
@@ -289,6 +342,18 @@ class SiteChecker:
             }
         except RequestsConnectionError as e:
             logger.error(f"Erro de conexão na verificação HTTP: {e}")
+            
+            # Registra erro no histórico
+            self.error_history.record_error(
+                error_type=ErrorType.HTTP_ERROR,
+                severity=ErrorSeverity.CRITICAL,
+                message=f"HTTP connection error: {str(e)}",
+                details={"error": str(e)},
+                ok_ssl=True,
+                ok_http=False,
+                ok_playwright=True,
+            )
+            
             return {
                 "ok_http": False,
                 "http_detail": {
@@ -298,6 +363,18 @@ class SiteChecker:
             }
         except RequestException as e:
             logger.error(f"Erro na requisição HTTP: {e}", exc_info=True)
+            
+            # Registra erro no histórico
+            self.error_history.record_error(
+                error_type=ErrorType.HTTP_ERROR,
+                severity=ErrorSeverity.WARNING,
+                message=f"HTTP request error: {str(e)}",
+                details={"error": str(e), "type": type(e).__name__},
+                ok_ssl=True,
+                ok_http=False,
+                ok_playwright=True,
+            )
+            
             return {
                 "ok_http": False,
                 "http_detail": {
@@ -307,6 +384,18 @@ class SiteChecker:
             }
         except Exception as e:
             logger.error(f"Erro inesperado na verificação HTTP: {e}", exc_info=True)
+            
+            # Registra erro no histórico
+            self.error_history.record_error(
+                error_type=ErrorType.HTTP_ERROR,
+                severity=ErrorSeverity.WARNING,
+                message=f"Unexpected error in HTTP check: {str(e)}",
+                details={"error": str(e), "type": type(e).__name__},
+                ok_ssl=True,
+                ok_http=False,
+                ok_playwright=True,
+            )
+            
             return {
                 "ok_http": False,
                 "http_detail": {
@@ -398,6 +487,17 @@ class SiteChecker:
                         if not playwright_ok:
                             logger.warning("Falha na interação com a página, tirando screenshot")
                             screenshot_path = self._take_failure_screenshot(page)
+                            
+                            # Registra erro no histórico
+                            self.error_history.record_error(
+                                error_type=ErrorType.PLAYWRIGHT_ERROR,
+                                severity=ErrorSeverity.WARNING,
+                                message=f"Playwright interaction failed: {'; '.join(detail_messages)}",
+                                details={"messages": detail_messages, "screenshot": screenshot_path},
+                                ok_ssl=True,
+                                ok_http=True,
+                                ok_playwright=False,
+                            )
                         
                         return {
                             "ok_playwright": playwright_ok,
@@ -415,6 +515,18 @@ class SiteChecker:
                             
         except PlaywrightTimeoutError as e:
             logger.error(f"Timeout no Playwright: {e}")
+            
+            # Registra erro no histórico
+            self.error_history.record_error(
+                error_type=ErrorType.PLAYWRIGHT_TIMEOUT,
+                severity=ErrorSeverity.CRITICAL,
+                message=f"Playwright timeout error: {str(e)}",
+                details={"error": str(e)},
+                ok_ssl=True,
+                ok_http=True,
+                ok_playwright=False,
+            )
+            
             return {
                 "ok_playwright": False,
                 "playwright_detail": {
@@ -424,6 +536,18 @@ class SiteChecker:
             }
         except Exception as e:
             logger.error(f"Erro inesperado no Playwright: {e}", exc_info=True)
+            
+            # Registra erro no histórico
+            self.error_history.record_error(
+                error_type=ErrorType.PLAYWRIGHT_ERROR,
+                severity=ErrorSeverity.WARNING,
+                message=f"Unexpected error in Playwright check: {str(e)}",
+                details={"error": str(e), "type": type(e).__name__, "traceback": traceback.format_exc()},
+                ok_ssl=True,
+                ok_http=True,
+                ok_playwright=False,
+            )
+            
             return {
                 "ok_playwright": False,
                 "playwright_detail": {

@@ -38,6 +38,11 @@ DEFAULT_SSL_EXPIRATION_WARNING_DAYS = 30  # Dias antes da expiração para alert
 MIN_SSL_EXPIRATION_WARNING_DAYS = 1
 MAX_SSL_EXPIRATION_WARNING_DAYS = 365
 
+# Configurações Dashboard
+DEFAULT_DASHBOARD_PORT = 8080
+MIN_DASHBOARD_PORT = 1024
+MAX_DASHBOARD_PORT = 65535
+
 
 @dataclass(frozen=True)
 class Settings:
@@ -57,6 +62,7 @@ class Settings:
         TIMEZONE: Timezone do sistema (padrão: America/Sao_Paulo).
         DAILY_REPORT_HOUR: Hora do dia para geração de relatório diário (0-23).
         SSL_EXPIRATION_WARNING_DAYS: Dias antes da expiração do certificado SSL para alertar (1-365).
+        DASHBOARD_PORT: Porta do dashboard Flask (padrão: 8080).
         BASE_DIR: Diretório base para relatórios e logs.
         FAIL_DIR: Diretório para screenshots de falhas.
         DAILY_DIR: Diretório para relatórios diários.
@@ -78,6 +84,7 @@ class Settings:
     TIMEZONE: str = DEFAULT_TIMEZONE
     DAILY_REPORT_HOUR: int = DEFAULT_DAILY_REPORT_HOUR
     SSL_EXPIRATION_WARNING_DAYS: int = DEFAULT_SSL_EXPIRATION_WARNING_DAYS
+    DASHBOARD_PORT: int = DEFAULT_DASHBOARD_PORT
     BASE_DIR: Path = field(default_factory=lambda: Path.cwd() / DEFAULT_BASE_DIR_NAME)
     FAIL_DIR: Path = field(init=False)
     DAILY_DIR: Path = field(init=False)
@@ -192,6 +199,19 @@ class Settings:
                 f"DAILY_REPORT_HOUR deve estar entre "
                 f"{MIN_DAILY_REPORT_HOUR} e {MAX_DAILY_REPORT_HOUR}. "
                 f"Recebido: {self.DAILY_REPORT_HOUR}"
+            )
+        
+        if not isinstance(self.DASHBOARD_PORT, int):
+            raise TypeError(
+                f"DASHBOARD_PORT deve ser um inteiro. "
+                f"Recebido: {type(self.DASHBOARD_PORT)}"
+            )
+        
+        if not (MIN_DASHBOARD_PORT <= self.DASHBOARD_PORT <= MAX_DASHBOARD_PORT):
+            raise ValueError(
+                f"DASHBOARD_PORT deve estar entre "
+                f"{MIN_DASHBOARD_PORT} e {MAX_DASHBOARD_PORT}. "
+                f"Recebido: {self.DASHBOARD_PORT}"
             )
     
     def _validate_ssl_settings(self) -> None:

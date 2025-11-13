@@ -20,6 +20,7 @@ from apscheduler.schedulers.background import BackgroundScheduler
 
 from check import SiteChecker
 from config import Settings, load_settings
+from dashboard import HealthDashboard
 from report import ReportGenerator
 from utils import send_slack
 
@@ -58,6 +59,7 @@ class MonitoringService:
         self.scheduler: Optional[BackgroundScheduler] = None
         self.checker: Optional[SiteChecker] = None
         self.report_gen: Optional[ReportGenerator] = None
+        self.dashboard: Optional[HealthDashboard] = None
         self._shutdown_requested = False
         self._setup_logging()
         logger.info("MonitoringService inicializado")
@@ -310,6 +312,17 @@ class MonitoringService:
             # Configura signal handlers
             self._setup_signal_handlers()
             
+            # Inicia dashboard (Flask web server em thread separada)
+            try:
+                self.dashboard = HealthDashboard(self.settings)
+                self.dashboard.start()
+                logger.info(
+                    f"Dashboard iniciado com sucesso em http://localhost:{self.settings.DASHBOARD_PORT or 8080}"
+                )
+            except Exception as e:
+                logger.warning(f"Erro ao iniciar dashboard: {e}. Monitoramento continua sem dashboard.", exc_info=True)
+                self.dashboard = None
+            
             # Inicia scheduler
             self.scheduler.start()
             
@@ -361,6 +374,15 @@ class MonitoringService:
             wait: Se True, aguarda jobs terminarem antes de encerrar.
         """
         logger.info("Encerrando serviço de monitoramento...")
+        
+        # Para o dashboard primeiro (se estiver rodando)
+        if self.dashboard:
+            try:
+                logger.info("Parando dashboard...")
+                self.dashboard.stop()
+                logger.info("Dashboard parado")
+            except Exception as e:
+                logger.error(f"Erro ao parar dashboard: {e}", exc_info=True)
         
         if self.scheduler:
             try:

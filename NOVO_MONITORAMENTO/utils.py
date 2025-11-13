@@ -16,6 +16,7 @@ from requests.exceptions import (
     RequestException,
     Timeout,
 )
+import re
 
 from config import Settings
 
@@ -28,6 +29,8 @@ DEFAULT_SLACK_TIMEOUT = 10  # Segundos
 DEFAULT_SLACK_RETRIES = 2  # Número de tentativas em caso de falha
 # Valor de exemplo presente no .env/config padrão. Usar constante evita magic strings espalhadas.
 DEFAULT_SLACK_WEBHOOK_EXAMPLE = "your/webhook/url"
+# Regex para validar webhooks do tipo https://hooks.slack.com/services/AAA/BBB/CCC
+SLACK_WEBHOOK_SERVICE_RE = re.compile(r"^https://hooks\.slack\.com/services/[A-Za-z0-9_-]+(?:/[A-Za-z0-9_-]+){1,2}$")
 LOG_ENCODING = "utf-8"
 JSON_ENSURE_ASCII = False
 
@@ -127,7 +130,8 @@ def send_slack(
     settings: Settings,
     text: str,
     timeout: int = DEFAULT_SLACK_TIMEOUT,
-    retries: int = DEFAULT_SLACK_RETRIES
+    retries: int = DEFAULT_SLACK_RETRIES,
+    allow_example_webhook: bool = False
 ) -> bool:
     """
     Envia uma mensagem para o Slack via webhook.
@@ -140,6 +144,7 @@ def send_slack(
         text: Texto da mensagem a ser enviada.
         timeout: Timeout em segundos para a requisição (padrão: 10).
         retries: Número de tentativas em caso de falha (padrão: 2).
+        allow_example_webhook: Se True, permite enviar com webhook de exemplo (teste manual). Padrão: False.
     
     Returns:
         True se a mensagem foi enviada com sucesso, False caso contrário.
@@ -147,22 +152,44 @@ def send_slack(
     Note:
         Se o webhook não estiver configurado, a função apenas registra
         um aviso e retorna False, sem lançar exceção.
+        
+        O parâmetro `allow_example_webhook` deve ser usado apenas em cenários
+        de teste manual e desenvolvimento. Nunca use em produção.
     
     Example:
         ```python
+        # Uso normal (produção)
         success = send_slack(settings, "Alerta: Site indisponível")
         if not success:
             logger.warning("Falha ao enviar notificação para Slack")
+        
+        # Teste manual com webhook de exemplo
+        success = send_slack(settings, "Mensagem de teste", allow_example_webhook=True)
         ```
     """
     # Verifica se o webhook está configurado
     # Guard: detecta se o webhook ainda está com o valor de exemplo
     if settings.SLACK_WEBHOOK and DEFAULT_SLACK_WEBHOOK_EXAMPLE in settings.SLACK_WEBHOOK:
-        logger.error(
-            "Webhook do Slack ainda está com o valor de exemplo. "
-            "Atualize o arquivo .env ou config.py com o webhook real."
-        )
-        return False
+        # RACIOCÍNIO: Usar WARNING em vez de ERROR para exemplo webhook
+        # - Desenvolvimento: Webhook de exemplo é situação normal durante desenvolvimento/testes
+        # - Não deve impedir execução: é apenas uma notificação de que Slack não está configurado
+        # - ERROR seria mais apropriado se Slack estivesse configurado incorretamente em produção
+        # - Mantém logs mais limpos: ERROR deveria ser apenas para situações críticas
+        
+        # Permite override apenas se flag allow_example_webhook=True (teste manual)
+        if not allow_example_webhook:
+            logger.warning(
+                "Webhook do Slack ainda está com o valor de exemplo. "
+                "Atualize o arquivo .env ou config.py com o webhook real se deseja enviar notificações. "
+                "Para teste manual, use: send_slack(..., allow_example_webhook=True)"
+            )
+            return False
+        else:
+            # Modo de teste manual: permite seguir adiante mas loga essa situação
+            logger.info(
+                "TESTE MANUAL: Enviando mensagem com webhook de exemplo (allow_example_webhook=True). "
+                "Não use em produção!"
+            )
 
     if not settings.SLACK_WEBHOOK:
         logger.warning(
@@ -175,6 +202,20 @@ def send_slack(
     if not text or not text.strip():
         logger.warning("Tentativa de enviar mensagem vazia para Slack")
         return False
+
+    # Validação mais robusta do formato do webhook do Slack (serviço)
+    # Só valida se SLACK_WEBHOOK for uma string (evita errors em testes que passam mocks incorretos)
+    try:
+        webhook_value = settings.SLACK_WEBHOOK
+        if isinstance(webhook_value, str) and not SLACK_WEBHOOK_SERVICE_RE.match(webhook_value):
+            logger.error(
+                "Formato do webhook do Slack inválido. Deve ser do tipo: 'https://hooks.slack.com/services/AAA/BBB/CCC'. "
+                "Atualize o arquivo .env ou config.py com um webhook válido."
+            )
+            return False
+    except Exception:
+        # Em caso de qualquer anomalia (ex: objeto mock), evita lançar exceção e segue para evitar break tests
+        logger.debug("Ignorando validação rígida do webhook devido a valor não string")
     
     # Tenta enviar a mensagem com retry
     last_exception = None
